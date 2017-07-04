@@ -1,2 +1,2 @@
 # munin-aws
-Munin AWS CPUutulization plugins
+Munin AWS CPUutulization plugin
