@@ -14,5 +14,5 @@ ln -s /usr/share/munin/plugins/aws-_-CPUutilization.py aws-ec2-CPUutilization
 ```
 For munin RDS:
 ```
-ln -s /usr/share/munin/plugins/aws-_-CPUutilization.py aws-ec2-CPUutilization
+ln -s /usr/share/munin/plugins/aws-_-CPUutilization.py aws-rds-CPUutilization
 ```
