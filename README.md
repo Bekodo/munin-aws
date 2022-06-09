@@ -1,5 +1,5 @@
 # munin-aws
-## Munin AWS CPUutulization plugin
+## Munin AWS CPUutilization plugin
 In your /etc/munin/plugin-conf/munin-node
 ```
 [aws-*]
