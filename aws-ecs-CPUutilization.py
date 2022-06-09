@@ -1,12 +1,12 @@
-#!/usr/bin/python3.7
+#!/usr/bin/python2.7
 
 import boto3
 import sys
 import os
-import requests
+import pycurl
 from collections import OrderedDict
+from StringIO import StringIO
 from datetime import datetime, timedelta
-
 
 '''
 In your /etc/munin/plugin-conf/munin-node
@@ -23,7 +23,7 @@ ln -s /usr/share/munin/plugins/aws-_-CPUutilization.py aws-rds-CPUutilization
 '''
 
 class Monitor(object):
-    difhourmin = 120
+    difhourmin = 0
     cloudwatch = []
     dimension = []
     typemon = ""
@@ -43,9 +43,16 @@ class Monitor(object):
         )
 
     def _getEc2InstanceID(self):
+        c = pycurl.Curl()
         url = 'http://169.254.169.254/latest/meta-data/instance-id'
-        content = requests.get(url)
-        return content.text
+        storage = StringIO()
+        c = pycurl.Curl()
+        c.setopt(c.URL, url)
+        c.setopt(c.WRITEFUNCTION, storage.write)
+        c.perform()
+        c.close()
+        content = storage.getvalue()
+        return content
 
     def _getInstance(self):
         typemon = self.typemon
@@ -86,13 +93,13 @@ class Monitor(object):
         attributes['warm'][3] = (value - 50)
         attributes['high'][3] = (value - 75)
         for element in attributes:
-            if attributes[element][3] < 0:
-                values += element + ".value 0\n"
-            elif attributes[element][3] > 25:
-                values += element + ".value 25\n"
-            else:
-                values += element + ".value " + str(attributes[element][3]) + "\n"
-            return values[:-1]
+    	    if attributes[element][3] < 0 :
+    	        values += element + ".value 0\n"
+    	    elif attributes[element][3] > 25:
+    	        values += element + ".value 25\n";
+    	    else:
+    	        values += element + ".value " + str(attributes[element][3]) + "\n"
+        return values[:-1]
 
     def printValue(self):
         dimension = self._setDimensions()
