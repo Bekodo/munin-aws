@@ -81,18 +81,13 @@ class Monitor(object):
     def _getStack(self,value):
         values = ""
         attributes = self.attributes
-        attributes['lowe'][3] = (value - 0)
-        attributes['medi'][3] = (value - 25)
-        attributes['warm'][3] = (value - 50)
-        attributes['high'][3] = (value - 75)
+        attributes['lowe'][3] = min(value, 25)
+        attributes['medi'][3] = max(min(value - 25, 25), 0)
+        attributes['warm'][3] = max(min(value - 50, 25), 0)
+        attributes['high'][3] = max(min(value - 75, 25), 0)
         for element in attributes:
-            if attributes[element][3] < 0:
-                values += element + ".value 0\n"
-            elif attributes[element][3] > 25:
-                values += element + ".value 25\n"
-            else:
-                values += element + ".value " + str(attributes[element][3]) + "\n"
-            return values[:-1]
+            values += element + ".value " + str(attributes[element][3]) + "\n"
+        return values[:-1]
 
     def printValue(self):
         dimension = self._setDimensions()
