@@ -1,4 +1,4 @@
-#!/usr/bin/python3.7
+#!/usr/bin/python
 
 import boto3
 import sys
@@ -6,7 +6,6 @@ import os
 import requests
 from collections import OrderedDict
 from datetime import datetime, timedelta
-
 
 '''
 In your /etc/munin/plugin-conf/munin-node
@@ -22,126 +21,117 @@ For munin RDS:
 ln -s /usr/share/munin/plugins/aws-_-CPUutilization.py aws-rds-CPUutilization
 '''
 
-class Monitor(object):
-    difhourmin = 120
-    cloudwatch = []
-    dimension = []
-    typemon = ""
-    attributes = OrderedDict([
-        ('lowe',['COLOUR0','Low','AREA',0]),
-        ('medi',['COLOUR6','Medium','STACK',0]),
-        ('warm',['COLOUR2','Warm','STACK',0]),
-        ('high',['COLOUR7','High','STACK',0]),
-        ])
-
-    def __init__(self,typemon):
+class Monitor:
+    def __init__(self, typemon):
         self.typemon = typemon
         self.cloudwatch = boto3.client('cloudwatch',
-            aws_access_key_id = os.environ.get('aws_access_key_id'),
-            aws_secret_access_key = os.environ.get('aws_secret_access_key'),
-            region_name = os.environ.get('region_name')
+            aws_access_key_id=os.environ.get('aws_access_key_id'),
+            aws_secret_access_key=os.environ.get('aws_secret_access_key'),
+            region_name=os.environ.get('region_name')
         )
+        self.attributes = OrderedDict([
+            ('lowe', ['COLOUR0', 'Low', 'AREA', 0]),
+            ('medi', ['COLOUR6', 'Medium', 'STACK', 0]),
+            ('warm', ['COLOUR2', 'Warm', 'STACK', 0]),
+            ('high', ['COLOUR7', 'High', 'STACK', 0]),
+        ])
 
-    def _getEc2InstanceID(self):
+    def _get_ec2_instance_id(self):
         url = 'http://169.254.169.254/latest/meta-data/instance-id'
-        content = requests.get(url)
-        return content.text
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.text
 
-    def _getInstance(self):
-        typemon = self.typemon
-        if typemon == 'rds':
+    def _get_instance(self):
+        if self.typemon == 'rds':
             return os.environ.get('database')
-        elif typemon == 'ec2':
-            return self._getEc2InstanceID()
-
-    def _setDimensions(self):
-        typemon = self.typemon
-        instance = self._getInstance()
-        dimension = {
-            'Namespace' : '',
-            'Dimensions' : [
-                {
-                    'Name': '',
-                    'Value': ''
-                },
-            ],
-        }
-        if typemon == 'rds':
-            dimension['Namespace'] = 'AWS/RDS'
-            dimension['Dimensions'][0]['Name'] = 'DBInstanceIdentifier'
-            dimension['Dimensions'][0]['Value'] = instance
-        elif typemon == 'ec2':
-            dimension['Namespace'] = 'AWS/EC2'
-            dimension['Dimensions'][0]['Name'] = 'InstanceId'
-            dimension['Dimensions'][0]['Value'] = instance
+        elif self.typemon == 'ec2':
+            return self._get_ec2_instance_id()
         else:
-            dimension = []
-        return dimension
+            raise ValueError("Invalid typemon value")
 
-    def _getStack(self,value):
-        values = ""
-        attributes = self.attributes
-        attributes['lowe'][3] = min(value, 25)
-        attributes['medi'][3] = max(min(value - 25, 25), 0)
-        attributes['warm'][3] = max(min(value - 50, 25), 0)
-        attributes['high'][3] = max(min(value - 75, 25), 0)
-        for element in attributes:
-            values += element + ".value " + str(attributes[element][3]) + "\n"
-        return values[:-1]
+    def _set_dimensions(self):
+        instance = self._get_instance()
+        if self.typemon == 'rds':
+            return {
+                'Namespace': 'AWS/RDS',
+                'Dimensions': [{'Name': 'DBInstanceIdentifier', 'Value': instance}]
+            }
+        elif self.typemon == 'ec2':
+            return {
+                'Namespace': 'AWS/EC2',
+                'Dimensions': [{'Name': 'InstanceId', 'Value': instance}]
+            }
+        else:
+            raise ValueError("Invalid typemon value")
 
-    def printValue(self):
-        dimension = self._setDimensions()
+    def _get_stack(self, value):
+        self.attributes['lowe'][3] = min(value, 25)
+        self.attributes['medi'][3] = max(min(value - 25, 25), 0)
+        self.attributes['warm'][3] = max(min(value - 50, 25), 0)
+        self.attributes['high'][3] = max(min(value - 75, 25), 0)
+        return "\n".join("{key}.value {value}".format(key=key, value=attr[3]) for key, attr in self.attributes.items())
+
+    def print_value(self):
+        dimensions = self._set_dimensions()
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(minutes=5)
         response = self.cloudwatch.get_metric_statistics(
-            Namespace = dimension['Namespace'],
-            MetricName = 'CPUUtilization',
-            Dimensions = [
-                {
-                    'Name': dimension['Dimensions'][0]['Name'],
-                    'Value': dimension['Dimensions'][0]['Value']
-                },
-            ],
-            StartTime = datetime.now() - timedelta(minutes = (self.difhourmin + 10)),
-            EndTime = datetime.now() - timedelta(minutes = (self.difhourmin + 5)),
-            Period = 300,
-            Statistics = ['Average'],
-            Unit = 'Percent'
+            Namespace=dimensions['Namespace'],
+            MetricName='CPUUtilization',
+            Dimensions=dimensions['Dimensions'],
+            StartTime=start_time,
+            EndTime=end_time,
+            Period=300,
+            Statistics=['Average'],
+            Unit='Percent'
         )
+        if not response['Datapoints']:
+            raise ValueError("No data points found")
         value = round(response['Datapoints'][0]['Average'])
-        return self._getStack(value)
+        return self._get_stack(value)
 
-    def printConf(self):
-        typemon = self.typemon
-        attributes = self.attributes
-        if typemon == 'rds':
+    def print_conf(self):
+        if self.typemon == 'rds':
             title = 'RDS'
             category = 'mysql2'
-        elif typemon == 'ec2':
+        elif self.typemon == 'ec2':
             title = 'EC2'
             category = 'system'
-        config = "graph_title " + title + " CPUutilization\n"\
-        "graph_args --base 1000 -r --lower-limit 0 --upper-limit 100\n"\
-        "graph_vlabel % of CPU utilization\n"\
-        "graph_order lowe medi warm high\n"\
-        "graph_category " + category + "\n"
-        for item in attributes:
-            config += item+".colour " + attributes[item][0] + "\n"
-            config += item+".label " + attributes[item][1] + "\n"
-            config += item+".draw " + attributes[item][2] + "\n"
-            config += item+".type " + "GAUGE" + "\n"
-            config += item+".min " + "0" + "\n"
-        return config[:-1]
+        else:
+            raise ValueError("Invalid typemon value")
 
-if __name__ == '__main__':
+        config = (
+            "graph_title {title} CPUutilization\n"
+            "graph_args --base 1000 -r --lower-limit 0 --upper-limit 100\n"
+            "graph_vlabel % of CPU utilization\n"
+            "graph_order lowe medi warm high\n"
+            "graph_category {category}\n"
+        ).format(title=title, category=category)
+        for key, attr in self.attributes.items():
+            config += (
+                "{key}.colour {colour}\n"
+                "{key}.label {label}\n"
+                "{key}.draw {draw}\n"
+                "{key}.type GAUGE\n"
+                "{key}.min 0\n"
+            ).format(key=key, colour=attr[0], label=attr[1], draw=attr[2])
+        return config
+
+def main():
     script_name = sys.argv[0].split("-")
-    if script_name[1] == 'rds' or script_name[1] == 'ec2':
-        typemon = script_name[1]
-    else:
-        sys.exit()
+    if len(script_name) < 2 or script_name[1] not in ['rds', 'ec2']:
+        sys.exit("Invalid script name format")
 
-    ClodWatch = Monitor(typemon)
+    typemon = script_name[1]
+    monitor = Monitor(typemon)
+
     if len(sys.argv) < 2:
-        print(ClodWatch.printValue())
+        print(monitor.print_value())
     elif sys.argv[1] == "config":
-        print(ClodWatch.printConf())
+        print(monitor.print_conf())
     else:
         print("Wrong Args")
+
+if __name__ == '__main__':
+    main()
