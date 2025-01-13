@@ -93,12 +93,12 @@ class Monitor(object):
         attributes['warm'][3] = (value - 50)
         attributes['high'][3] = (value - 75)
         for element in attributes:
-    	    if attributes[element][3] < 0 :
-    	        values += element + ".value 0\n"
-    	    elif attributes[element][3] > 25:
-    	        values += element + ".value 25\n";
-    	    else:
-    	        values += element + ".value " + str(attributes[element][3]) + "\n"
+            if attributes[element][3] < 0:
+                values += element + ".value 0\n"
+            elif attributes[element][3] > 25:
+                values += element + ".value 25\n"
+            else:
+                values += element + ".value " + str(attributes[element][3]) + "\n"
         return values[:-1]
 
     def printValue(self):
